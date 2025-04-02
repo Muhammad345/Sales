@@ -1,0 +1,154 @@
+﻿@page "/salesDetail"
+@using Sales.Core.Application.DTO_Entities
+@using System.Net.Http.Json
+@using System.Text.Json
+
+@inject HttpClient Http
+@inject ILogger<SalesDto> Logger
+
+<PageTitle>Sales Details </PageTitle>
+
+<h1>Sales Details</h1>
+
+<p>Sales Details</p>
+<div class="status-container">
+    @switch (currentState)
+    {
+        case LoadingState.Loading:
+            <div class="alert alert-info" role="alert">
+                <p><em>Loading data...</em></p>
+            </div>
+            break;
+
+        case LoadingState.Error:
+            <div class="alert alert-danger" role="alert">
+                <h4 class="alert-heading">Error Loading Data</h4>
+                @if (errorMessage?.Any() == true)
+                {
+                    <ul>
+                        @foreach (var error in errorMessage)
+                        {
+                            <li>@error</li>
+                        }
+                    </ul>
+                }
+                else
+                {
+                    <p>An unknown error occurred.</p>
+                }
+            </div>
+            break;
+
+        case LoadingState.Success when SalesSummaryData?.Any() != true:
+            <div class="alert alert-warning" role="alert">
+                <p>No sales summary data available.</p>
+            </div>
+            break;
+
+        case LoadingState.Success:
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Country</th>
+                        <th>Segment</th>
+                        <th>Total Units Sold (GBP)</th>
+                        <th>Total Sale Price (GBP)</th>
+                        <th>Total Manufacturing Price (GBP)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var summary in SalesSummaryData)
+                    {
+                        <tr>
+                            <td>@summary.Country</td>
+                            <td>@summary.Segment</td>
+                            <td>@summary.UnitsSoldCurrency @summary.TotalUnitsSold</td>
+                            <td>@summary.SalePriceCurrency @summary.TotalSalePrice</td>
+                            <td>@summary.ManufacturingPriceCurrency @summary.TotalManufacturingPrice</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            break;
+    }
+</div>
+
+@code {
+    private IEnumerable<SalesSummaryDto>? SalesSummaryData;
+    private List<string>? errorMessage;
+    private LoadingState currentState = LoadingState.Loading;
+    private bool isRetrying = false;
+
+    private enum LoadingState
+    {
+        Loading,
+        Success,
+        Error
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        try
+        {
+            currentState = LoadingState.Loading;
+            SalesSummaryData = null;
+            errorMessage = null;
+
+            var response = await Http.GetAsync("Sales/summary");
+            response.EnsureSuccessStatusCode();
+
+            var salesApiResponse = await response.Content.ReadFromJsonAsync<SalesApiResponse<IEnumerable<SalesDto>>>();
+
+            if (salesApiResponse == null)
+            {
+                throw new JsonException("Received null response from API");
+            }
+
+            if (!salesApiResponse.IsSuccessful)
+            {
+                currentState = LoadingState.Error;
+                errorMessage = salesApiResponse?.Errors?.ToList() ?? default;
+                Logger.LogWarning("Sales API returned unsuccessful response: {Error}", errorMessage);
+                return;
+            }
+
+            SalesSummaryData = salesApiResponse.Data ?? Enumerable.Empty<SalesSummaryDto>();
+            currentState = LoadingState.Success;
+            Logger.LogInformation("Successfully loaded {Count} sales summary records", SalesSummaryData.Count());
+        }
+        catch (HttpRequestException ex)
+        {
+            currentState = LoadingState.Error;
+            errorMessage = new List<string> { $"Network error: {ex.Message}. Please check Sales API  is running." };
+            Logger.LogError(ex, "HTTP error occurred while fetching sales summary");
+        }
+        catch (JsonException ex)
+        {
+            currentState = LoadingState.Error;
+            errorMessage = new List<string> { $"Data processing error: {ex.Message}" };
+            Logger.LogError(ex, "JSON deserialization error occurred");
+        }
+        catch (Exception ex)
+        {
+            currentState = LoadingState.Error;
+            errorMessage = new List<string> { $"Unexpected error: {ex.Message}" };
+            Logger.LogError(ex, "Unexpected error occurred while fetching sales summary");
+        }
+        finally
+        {
+            isRetrying = false;
+            StateHasChanged();
+        }
+    }
+
+
+
+
+
+   
+}

@@ -1,5 +1,7 @@
 using Sales.Infrastructure;
 using Sales.Core.Application;
+using Sales.Core.Domain;
+using Sales.Core.Application.AutoMapper;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -12,6 +14,17 @@ builder.Services.AddSwaggerGen();
 
 builder.Services.AddSalesCoreApplicationDI();
 builder.Services.AddSalesInfrastructureDI();
+builder.Services.Configure<FileConfiguration>(builder.Configuration.GetSection("FileSettings"));
+builder.Services.AddAutoMapper(typeof(SalesMappingProfile));
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAllOrigins", policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyMethod()
+              .AllowAnyHeader();
+    });
+});
 
 var app = builder.Build();
 
@@ -23,7 +36,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-
+app.UseCors("AllowAllOrigins");
 app.UseAuthorization();
 
 app.MapControllers();

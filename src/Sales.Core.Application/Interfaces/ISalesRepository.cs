@@ -3,7 +3,7 @@
 namespace Sales.Core.Application.Interfaces
 {
 
-    public interface ISalesDataRepository
+    public interface ISalesRepository
     {
         IEnumerable<SalesData> GetSalesData(string filePath);
     }
