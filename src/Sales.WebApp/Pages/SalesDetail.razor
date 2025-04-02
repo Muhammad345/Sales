@@ -89,7 +89,7 @@
     private LoadingState currentState = LoadingState.Loading;
     private bool isRetrying = false;
     private int CurrentPage { get; set; } = 1;
-    private const int PageSize = 5;
+    private const int PageSize = 20;
     private int TotalPages => SalesDetailData != null ? (int)Math.Ceiling((double)SalesDetailData.Count() / PageSize) : 0;
 
     private enum LoadingState
