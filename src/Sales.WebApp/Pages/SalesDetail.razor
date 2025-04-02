@@ -2,11 +2,12 @@
 @using Sales.Core.Application.DTO_Entities
 @using System.Net.Http.Json
 @using System.Text.Json
+@using Sales.Core.Domain
 
 @inject HttpClient Http
 @inject ILogger<SalesDto> Logger
 
-<PageTitle>Sales Details </PageTitle>
+<PageTitle>Sales Details</PageTitle>
 
 <h1>Sales Details</h1>
 
@@ -39,9 +40,9 @@
             </div>
             break;
 
-        case LoadingState.Success when SalesSummaryData?.Any() != true:
+        case LoadingState.Success when SalesDetailData?.Any() != true:
             <div class="alert alert-warning" role="alert">
-                <p>No sales summary data available.</p>
+                <p>No sales data available.</p>
             </div>
             break;
 
@@ -51,33 +52,45 @@
                     <tr>
                         <th>Country</th>
                         <th>Segment</th>
-                        <th>Total Units Sold (GBP)</th>
-                        <th>Total Sale Price (GBP)</th>
-                        <th>Total Manufacturing Price (GBP)</th>
+                        <th>DiscountBand</th>
+                        <th>UnitsSold (GBP)</th>
+                        <th>ManufacturingPrice (GBP)</th>
+                        <th>SalePrice (GBP)</th>
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var summary in SalesSummaryData)
+                    @foreach (var sales in PaginatedSales)
                     {
                         <tr>
-                            <td>@summary.Country</td>
-                            <td>@summary.Segment</td>
-                            <td>@summary.UnitsSoldCurrency @summary.TotalUnitsSold</td>
-                            <td>@summary.SalePriceCurrency @summary.TotalSalePrice</td>
-                            <td>@summary.ManufacturingPriceCurrency @summary.TotalManufacturingPrice</td>
+                            <td>@sales.Country</td>
+                            <td>@sales.Segment</td>
+                            <td>@sales.DiscountBand</td>
+                            <td>@sales.UnitsSold</td>
+                            <td>@sales.ManufacturingPrice</td>
+                            <td>@sales.SalePrice</td>
                         </tr>
                     }
                 </tbody>
             </table>
+
+            <div class="pagination-controls" style="margin-top: 20px;">
+                <button class="btn btn-primary" disabled="@(CurrentPage == 1)" @onclick="PreviousPage">Previous</button>
+                <span style="margin: 0 15px;">Page @CurrentPage of @TotalPages</span>
+                <button class="btn btn-primary" disabled="@(CurrentPage == TotalPages)" @onclick="NextPage">Next</button>
+            </div>
             break;
     }
 </div>
 
 @code {
-    private IEnumerable<SalesSummaryDto>? SalesSummaryData;
+    private IEnumerable<SalesDto>? SalesDetailData;
+    private IEnumerable<SalesDto> PaginatedSales { get; set; } = Enumerable.Empty<SalesDto>();
     private List<string>? errorMessage;
     private LoadingState currentState = LoadingState.Loading;
     private bool isRetrying = false;
+    private int CurrentPage { get; set; } = 1;
+    private const int PageSize = 5;
+    private int TotalPages => SalesDetailData != null ? (int)Math.Ceiling((double)SalesDetailData.Count() / PageSize) : 0;
 
     private enum LoadingState
     {
@@ -96,10 +109,10 @@
         try
         {
             currentState = LoadingState.Loading;
-            SalesSummaryData = null;
+            SalesDetailData = null;
             errorMessage = null;
 
-            var response = await Http.GetAsync("Sales/summary");
+            var response = await Http.GetAsync("Sales");
             response.EnsureSuccessStatusCode();
 
             var salesApiResponse = await response.Content.ReadFromJsonAsync<SalesApiResponse<IEnumerable<SalesDto>>>();
@@ -117,14 +130,16 @@
                 return;
             }
 
-            SalesSummaryData = salesApiResponse.Data ?? Enumerable.Empty<SalesSummaryDto>();
+            SalesDetailData = salesApiResponse.Data ?? Enumerable.Empty<SalesDto>();
             currentState = LoadingState.Success;
-            Logger.LogInformation("Successfully loaded {Count} sales summary records", SalesSummaryData.Count());
+            await UpdatePaginatedData();
+
+            Logger.LogInformation("Successfully loaded {Count} sales summary records", SalesDetailData.Count());
         }
         catch (HttpRequestException ex)
         {
             currentState = LoadingState.Error;
-            errorMessage = new List<string> { $"Network error: {ex.Message}. Please check Sales API  is running." };
+            errorMessage = new List<string> { $"Network error: {ex.Message}. Please check Sales API is running." };
             Logger.LogError(ex, "HTTP error occurred while fetching sales summary");
         }
         catch (JsonException ex)
@@ -146,9 +161,33 @@
         }
     }
 
+    private async Task UpdatePaginatedData()
+    {
+        if (SalesDetailData != null)
+        {
+            PaginatedSales = SalesDetailData
+                .Skip((CurrentPage - 1) * PageSize)
+                .Take(PageSize);
+        }
+    }
 
+    private async Task PreviousPage()
+    {
+        if (CurrentPage > 1)
+        {
+            CurrentPage--;
+            await UpdatePaginatedData();
+            StateHasChanged();
+        }
+    }
 
-
-
-   
+    private async Task NextPage()
+    {
+        if (CurrentPage < TotalPages)
+        {
+            CurrentPage++;
+            await UpdatePaginatedData();
+            StateHasChanged();
+        }
+    }
 }
